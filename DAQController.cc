@@ -6,7 +6,6 @@
 // 2-armed
 // 3-running
 // 4-error
-// 99-testnapoli8ott
 
 DAQController::DAQController(MongoLog *log, std::string hostname){
   fLog=log;
@@ -94,7 +93,8 @@ int DAQController::InitializeElectronics(Options *options, std::vector<int>&keys
       
       // Load DAC. n.b.: if you set the DAC value in your
       // ini file you'll overwrite the fancy stuff done here!
-      vector<u_int16_t>dac_values(8, 0x0);
+      // vector<u_int16_t>dac_values(8, 0x0);
+      vector<u_int16_t>dac_values(16, 0x0); // Stefano 
 
       // Multiple options here
       std::string BL_MODE = fOptions->GetString("baseline_dac_mode", "fixed");
@@ -163,7 +163,8 @@ int DAQController::InitializeElectronics(Options *options, std::vector<int>&keys
 
 
       // Load the baselines you just configured
-      vector<bool> update_dac(8, true);
+      // vector<bool> update_dac(8, true);
+      vector<bool> update_dac(16, true); // Stefano
       success += digi->LoadDAC(dac_values, update_dac);
       written_dacs[digi->bid()] = dac_values;
       std::cout<<"Configuration finished for digi "<<digi->bid()<<std::endl;
@@ -295,7 +296,8 @@ void DAQController::ReadData(int link){
     fBufferLength=0;
     fRawDataBuffer = NULL;
   }
-  
+
+  u_int32_t board_event_cnt; // Stefano
   u_int32_t lastRead = 0; // bytes read in last cycle. make sure we clear digitizers at run stop
   long int readcycler = 0;
   while(fReadLoop){// || lastRead > 0){
@@ -326,6 +328,7 @@ void DAQController::ReadData(int link){
 	if(d.buff[idx]>>20==0xA00){
 	  d.header_time = d.buff[idx+3]&0x7FFFFFFF;
 	  d.clock_counter = fDigitizers[link][x]->GetClockCounter(d.header_time);
+	  board_event_cnt=d.buff[idx+2]&0x00FFFFFF; // Stefano
 	  break;
 	}
 	idx++;

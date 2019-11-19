@@ -35,6 +35,9 @@ int StraxInserter::Initialize(Options *options, MongoLog *log, DAQController *da
   std::string run_name = fOptions->GetString("run_identifier", "run");
   
   // To start we do not know which FW version we're dealing with (for data parsing)
+
+  /*
+ // Stefano comment
   fFirmwareVersion = fOptions->GetInt("firmware_version", -1);
   if(fFirmwareVersion == -1){
 	cout<<"Firmware version unspecified in options"<<endl;
@@ -45,6 +48,8 @@ int StraxInserter::Initialize(Options *options, MongoLog *log, DAQController *da
 	return -1;
   }
 
+  */
+  
   fMissingVerified = 0;
   fDataSource = dataSource;
   fLog = log;
@@ -82,10 +87,24 @@ void StraxInserter::ParseDocuments(data_packet dp){
   
   // Unpack the things from the data packet
   vector<u_int32_t> clock_counters;
+  /*
+  // Stefano
   for(int i=0; i<8; i++)
     clock_counters.push_back(dp.clock_counter);
   vector<u_int32_t> last_times_seen = {0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
 				       0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF};
+
+  */
+  // Stefano
+  u_int32_t NumChannels = 16;
+  for(int i=0; i<NumChannels; i++)
+    clock_counters.push_back(dp.clock_counter);
+  vector<u_int32_t> last_times_seen = {0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+				       0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+  				       0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+				       0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF};
+  
+  
   u_int32_t size = dp.size;
   u_int32_t *buff = dp.buff;
   int smallest_latest_index_seen = -1;
@@ -98,7 +117,8 @@ void StraxInserter::ParseDocuments(data_packet dp){
     
     if(buff[idx]>>20 == 0xA00){ // Found a header, start parsing
       u_int32_t event_size = buff[idx]&0xFFFFFFF; // In bytes
-      u_int32_t channel_mask = buff[idx+1]&0xFF; // Channels in event
+      //u_int32_t channel_mask = buff[idx+1]&0xFF; // Channels in event  // Stefano
+      u_int32_t channel_mask = ( ((buff[idx+2]>>24)&0xFF)<<8 ) | (buff[idx+1]&0xFF); // Channels in event // Stefano
       u_int32_t channels_in_event = __builtin_popcount(channel_mask);
       u_int32_t board_fail  = buff[idx+1]&0x4000000; //Board failed. Never saw this set.
       u_int32_t event_time = buff[idx+3]&0x7FFFFFFF;
@@ -112,19 +132,29 @@ void StraxInserter::ParseDocuments(data_packet dp){
       
       idx += 4; // Skip the header
 
-      for(unsigned int channel=0; channel<8; channel++){
+      //for(unsigned int channel=0; channel<8; channel++){
+       for(unsigned int channel=0; channel<NumChannels; channel++){ // Stefano
 	if(!((channel_mask>>channel)&1)) // Make sure channel in data
 	  continue;
 
 	u_int32_t channel_size = (event_size - 4) / channels_in_event;
 	u_int32_t channel_time = event_time;
-
-	if(fFirmwareVersion == 0){
-	  channel_size = (buff[idx]&0x7FFFFF)-2; // In words (4 bytes). The -2 is cause of header
+	u_int32_t channel_timeMSB; // Stefano
+	u_int32_t baseline_ch; // Stefano
+	
+	
+	//	if(fFirmwareVersion == 0)  // Stefano
+	{
+	  // channel_size = (buff[idx]&0x7FFFFF)-2; // In words (4 bytes). The -2 is cause of header
+	   channel_size = (buff[idx]&0x7FFFFF)-3; // In words (4 bytes). The -2 is cause of header  // Stefano
 	  idx++;
 	  channel_time = buff[idx]&0x7FFFFFFF;
 	  idx++;
+	  channel_timeMSB = buff[idx]&0xFFFF; //Stefano
+	  baseline_ch = (buff[idx]>>16)&0x3FFF; //Stefano
+	  idx++; // Stefano
 	}
+	
 
 	// OK. Here's the logic for the clock reset, and I realize this is the
 	// second place in the code where such weird logic is needed but that's it

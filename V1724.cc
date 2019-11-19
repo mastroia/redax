@@ -24,6 +24,9 @@ int V1724::Init(int link, int crate, int bid, unsigned int address){
 	      bid, fBoardHandle, link, crate);
   
   // To start we do not know which FW version we're dealing with (for data parsing)
+
+  // Stefano disable
+  /*
   fFirmwareVersion = fOptions->GetInt("firmware_version", -1);
   if(fFirmwareVersion == -1){
 	cout<<"Firmware version unspecified in options"<<endl;
@@ -33,6 +36,7 @@ int V1724::Init(int link, int crate, int bid, unsigned int address){
 	cout<<"Firmware version unidentified, accepted versions are {0, 1}"<<endl;
 	return -1;
   }
+  */
   fLog->Entry(MongoLog::Debug, "Assuming firmware %i (0: XENON, 1: default)",
 	      fFirmwareVersion);
 
@@ -153,9 +157,9 @@ u_int32_t V1724::ReadMBLT(unsigned int *&buffer){
   int nb=0,ret=-5;
   // The best-equipped V1724E has 4MS/channel memory = 8 MB/channel
   // the other, V1724G, has 512 MS/channel = 1MB/channel
-  //unsigned int BLT_SIZE=8388608; //8*8388608; // 8MB buffer size
-  unsigned int BLT_SIZE=524288;
-  unsigned int BUFFER_SIZE = 8388608*4; // I do not understand why this has to be so high
+  unsigned int BLT_SIZE=8*8388608; //8388608; // 8MB buffer size
+  //unsigned int BLT_SIZE=524288;
+  unsigned int BUFFER_SIZE = 8388608*8; //8388608*4; // I do not understand why this has to be so high
   u_int32_t *tempBuffer = new u_int32_t[BUFFER_SIZE];
 
   int count = 0;
@@ -207,7 +211,8 @@ u_int32_t V1724::ReadMBLT(unsigned int *&buffer){
   // In tests this does not seem to impact our ability to read out the V1724 at the
   // maximum bandwidth of the link.
   if(blt_bytes>0){
-    buffer = new u_int32_t[blt_bytes/(sizeof(u_int32_t))];
+    //buffer = new u_int32_t[blt_bytes/(sizeof(u_int32_t))];
+    buffer = new u_int32_t[BUFFER_SIZE]; // Stefano to avoid crashes
     std::memcpy(buffer, tempBuffer, blt_bytes);
   }
   delete[] tempBuffer;
@@ -227,7 +232,8 @@ int V1724::ConfigureBaselines(vector <u_int16_t> &end_values,
   // Initial parameters:
   int adjustment_threshold = 5;
   int current_iteration=0;
-  int nChannels = 8;
+  int nChannels = 16; // Stefano
+  //int nChannels = 8;
   int repeat_this_many=5;
   int triggers_per_iteration = 1;
 
@@ -329,7 +335,8 @@ int V1724::ConfigureBaselines(vector <u_int16_t> &end_values,
       if(buff[idx]>>20==0xA00){ // header
 
 	u_int32_t esize = buff[idx]&0xFFFFFFF;
-	u_int32_t cmask = buff[idx+1]&0xFF;
+	//	u_int32_t cmask = buff[idx+1]&0xFF;    // Stefano
+	u_int32_t cmask = (((buff[idx+2]>>24)&0xFF)<<8) | (buff[idx+1]&0xFF); // Stefano
 	u_int32_t csize = 0;
 	u_int32_t n_chan = __builtin_popcount(cmask);
 	if(n_chan > 0)
@@ -346,7 +353,8 @@ int V1724::ConfigureBaselines(vector <u_int16_t> &end_values,
 
 	idx += 4;
 	// Loop through channels
-	for(unsigned int channel=0; channel<8; channel++){		
+	// for(unsigned int channel=0; channel<8; channel++){   // Stefano
+	for(unsigned int channel=0; channel<nChannels; channel++){ // Stefano
 	  if(!((cmask>>channel)&1))
             continue;
 	  
@@ -363,9 +371,11 @@ int V1724::ConfigureBaselines(vector <u_int16_t> &end_values,
 	    break;
 	  }
 	  
-	  if(fFirmwareVersion == 0){
-            csize = (buff[idx]&0x7FFFFF)-2; // In words (4 bytes). The -2 is cause of header
-            idx += 2;
+	  // if(fFirmwareVersion == 0  // Stefano
+	  {
+            //csize = (buff[idx]&0x7FFFFF)-2; // In words (4 bytes). The -2 is cause of header
+	    csize = (buff[idx]&0x7FFFFF)-3;   // Stefano
+            idx += 3;                         // Stefano  
           }
 	  if(channel_finished[channel]>=repeat_this_many){
 	    idx+=csize;
@@ -495,7 +505,8 @@ int V1724::LoadDAC(vector<u_int16_t>dac_values, vector<bool> &update_dac){
   // Loads DAC values into registers
   
   for(unsigned int x=0; x<dac_values.size(); x++){
-    if(x>7 || update_dac[x]==false) // oops
+    // if(x>7 || update_dac[x]==false) // oops   // Stefano
+      if(x>15 || update_dac[x]==false) // oops // Stefano
       continue;
 
     // We updated, or at least tried to update

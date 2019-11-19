@@ -6,6 +6,7 @@
 // 2-armed
 // 3-running
 // 4-error
+// 99-testnapoli8ott
 
 DAQController::DAQController(MongoLog *log, std::string hostname){
   fLog=log;
